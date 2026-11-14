@@ -378,7 +378,7 @@ class _Transferencias extends StatelessWidget {
                               SizedBox(
                                 width: double.infinity,
                                 child: FilledButton(
-                                  onPressed: () {},
+                                  onPressed: () => _confirmarSaldado(context),
                                   style: FilledButton.styleFrom(
                                     backgroundColor: kPrimario,
                                     padding: const EdgeInsets.symmetric(
@@ -408,6 +408,38 @@ class _Transferencias extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Pide confirmación y registra todas las transferencias como pagadas.
+Future<void> _confirmarSaldado(BuildContext context) async {
+  final appState = context.read<AppState>();
+  final n = appState.transferencias.length;
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('¿Marcar como saldado?'),
+      content: Text(
+        'Se registrarán $n ${n == 1 ? 'pago' : 'pagos'} en '
+        '"${appState.nombreActivo}" y los saldos de todos quedarán en cero.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          style: FilledButton.styleFrom(backgroundColor: kPrimario),
+          child: const Text('Saldar'),
+        ),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  appState.marcarComoSaldado();
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('¡Listo! Las cuentas quedaron saldadas')),
+  );
 }
 
 class _Transferencia extends StatelessWidget {

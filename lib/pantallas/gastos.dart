@@ -4,14 +4,13 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../tema.dart';
 
-const _miembros = 4;
-
 const _categorias = [
   'Todos',
   'Comida',
   'Hospedaje',
   'Transporte',
   'Actividades',
+  'Otros',
 ];
 
 Color _colorDe(String categoria) {
@@ -59,6 +58,8 @@ class _GastosPageState extends State<GastosPage> {
   Widget build(BuildContext context) {
     var appState = context.watch<AppState>();
     final gastos = appState.gastos;
+    // Número real de personas del grupo activo (antes estaba fijo en 4)
+    final miembros = appState.miembros.length;
 
     final filtro = _categorias[filtroActivo];
     final visibles = filtro == 'Todos'
@@ -83,6 +84,7 @@ class _GastosPageState extends State<GastosPage> {
               cantidad: visibles.length,
               filtro: filtro,
               gastos: visibles,
+              miembros: miembros,
             ),
             const SizedBox(height: 16),
             SizedBox(
@@ -115,7 +117,7 @@ class _GastosPageState extends State<GastosPage> {
                 ),
               ),
             // reversed: el último gasto agregado aparece primero
-            for (final g in visibles.reversed) _TarjetaGasto(g),
+            for (final g in visibles.reversed) _TarjetaGasto(g, miembros),
             const SizedBox(height: 90),
           ],
         ),
@@ -194,11 +196,13 @@ class _TarjetaResumen extends StatelessWidget {
   final int cantidad;
   final String filtro;
   final List<Gasto> gastos;
+  final int miembros;
   const _TarjetaResumen({
     required this.total,
     required this.cantidad,
     required this.filtro,
     required this.gastos,
+    required this.miembros,
   });
 
   @override
@@ -267,7 +271,7 @@ class _TarjetaResumen extends StatelessWidget {
               Expanded(
                 child: _Mini(
                   'Tu parte',
-                  dinero(total / _miembros),
+                  dinero(miembros == 0 ? 0 : total / miembros),
                   Icons.person_outline,
                 ),
               ),
@@ -396,7 +400,8 @@ class _Titulo extends StatelessWidget {
 
 class _TarjetaGasto extends StatelessWidget {
   final Gasto gasto;
-  const _TarjetaGasto(this.gasto);
+  final int miembros;
+  const _TarjetaGasto(this.gasto, this.miembros);
 
   @override
   Widget build(BuildContext context) {
@@ -431,7 +436,7 @@ class _TarjetaGasto extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Pagó ${gasto.pagador} · entre $_miembros',
+                  'Pagó ${gasto.pagador} · entre $miembros',
                   style: const TextStyle(color: kGris, fontSize: 12),
                 ),
                 const SizedBox(height: 6),
@@ -469,7 +474,7 @@ class _TarjetaGasto extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'Tu parte ${dinero(gasto.monto / _miembros)}',
+                'Tu parte ${dinero(miembros == 0 ? 0 : gasto.monto / miembros)}',
                 style: const TextStyle(color: kGris, fontSize: 11),
               ),
             ],
