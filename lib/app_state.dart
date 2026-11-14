@@ -18,6 +18,13 @@ class Gasto {
   });
 }
 
+/// Pago real entre dos miembros (cuando se marca una deuda como saldada).
+class Pago {
+  final String de, para;
+  final double monto;
+  const Pago(this.de, this.para, this.monto);
+}
+
 class Transferencia {
   final String de, para;
   final double monto;
@@ -71,6 +78,16 @@ class AppState extends ChangeNotifier {
                     ticketPath: g.ticketPath,
                   )
                 : g,
+        ];
+      }
+      for (final k in _pagosPorGrupo.keys.toList()) {
+        _pagosPorGrupo[k] = [
+          for (final p in _pagosPorGrupo[k]!)
+            Pago(
+              p.de == viejo ? nombre : p.de,
+              p.para == viejo ? nombre : p.para,
+              p.monto,
+            ),
         ];
       }
       yo = nombre;
@@ -192,13 +209,46 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ----- Pagos (deudas ya saldadas, uno por grupo) -----
+  final _pagosPorGrupo = <String, List<Pago>>{};
+
+  List<Pago> get pagos => _pagosPorGrupo.putIfAbsent(nombreActivo, () => []);
+
   // ----- Saldos -----
-  /// Saldo por persona: positivo = le deben, negativo = debe.
-  /// Saldo = lo que pagó - su parte equitativa (total / miembros).
-  Map<String, double> get saldos {
-    final parte = miembros.isEmpty ? 0.0 : total / miembros.length;
-    final pagado = porPagador;
-    return {for (final m in miembros) m: (pagado[m] ?? 0) - parte};
+  /// Calcula el saldo de cada miembro de un grupo.
+  /// Saldo = lo que pagó - su parte equitativa (total / miembros) + lo que ya transfirió - lo que ya le transfirieron.
+  /// Positivo = le deben, negativo = debe. Se redondea a centavos.
+  Map<String, double> _calcularSaldos(
+    List<String> ms,
+    List<Gasto> gs,
+    List<Pago> ps,
+  ) {
+    if (ms.isEmpty) return {};
+    final totalG = gs.fold(0.0, (s, g) => s + g.monto);
+    final parte = totalG / ms.length;
+    final res = {for (final m in ms) m: -parte};
+    for (final g in gs) {
+      if (res.containsKey(g.pagador)) res[g.pagador] = res[g.pagador]! + g.monto;
+    }
+    for (final p in ps) {
+      if (res.containsKey(p.de)) res[p.de] = res[p.de]! + p.monto;
+      if (res.containsKey(p.para)) res[p.para] = res[p.para]! - p.monto;
+    }
+    return {
+      for (final e in res.entries) e.key: (e.value * 100).roundToDouble() / 100,
+    };
+  }
+
+  /// Saldo por persona en el grupo activo.
+  Map<String, double> get saldos => _calcularSaldos(miembros, gastos, pagos);
+
+  /// Registra como pagadas todas las transferencias pendientes del grupo
+  /// activo, con lo que todos los saldos quedan en cero.
+  void marcarComoSaldado() {
+    final pendientes = transferencias;
+    if (pendientes.isEmpty) return;
+    pagos.addAll([for (final t in pendientes) Pago(t.de, t.para, t.monto)]);
+    notifyListeners();
   }
 
   /// Lo que te deben a ti. Si estás en deuda, es 0.
@@ -241,17 +291,14 @@ class AppState extends ChangeNotifier {
   int miembrosDe(String g) => (_miembrosPorGrupo[g] ?? const []).length;
   int gastosDe(String g) => (_gastosPorGrupo[g] ?? const []).length;
 
-  /// Tu saldo en un grupo: lo que pagaste menos tu parte equitativa.
-  double saldoEnGrupo(String g) {
-    final ms = _miembrosPorGrupo[g] ?? const <String>[];
-    final gs = _gastosPorGrupo[g] ?? const <Gasto>[];
-    if (ms.isEmpty) return 0;
-    final totalG = gs.fold(0.0, (s, x) => s + x.monto);
-    final pagado = gs
-        .where((x) => x.pagador == yo)
-        .fold(0.0, (s, x) => s + x.monto);
-    return pagado - totalG / ms.length;
-  }
+  /// Tu saldo en un grupo (incluye las deudas ya saldadas).
+  double saldoEnGrupo(String g) =>
+      _calcularSaldos(
+        _miembrosPorGrupo[g] ?? const <String>[],
+        _gastosPorGrupo[g] ?? const <Gasto>[],
+        _pagosPorGrupo[g] ?? const <Pago>[],
+      )[yo] ??
+      0.0;
 
   double get balanceGeneral => grupos.fold(0.0, (s, g) => s + saldoEnGrupo(g));
 
